@@ -1,0 +1,309 @@
+{{- if not .Values.debug }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}-student
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      network-policy: student
+
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: proxy
+    ports:
+    # IDE server port
+    - {protocol: TCP, port: 5000}
+    - {protocol: UDP, port: 5000}
+    # Optional proxy ports
+    - {protocol: TCP, port: 8000}
+    - {protocol: UDP, port: 8000}
+    - {protocol: TCP, port: 8001}
+    - {protocol: UDP, port: 8001}
+    - {protocol: TCP, port: 8002}
+    - {protocol: UDP, port: 8002}
+    - {protocol: TCP, port: 8003}
+    - {protocol: UDP, port: 8003}
+    - {protocol: TCP, port: 8004}
+    - {protocol: UDP, port: 8004}
+    - {protocol: TCP, port: 8005}
+    - {protocol: UDP, port: 8005}
+    - {protocol: TCP, port: 8006}
+    - {protocol: UDP, port: 8006}
+    - {protocol: TCP, port: 8007}
+    - {protocol: UDP, port: 8007}
+    - {protocol: TCP, port: 8008}
+    - {protocol: UDP, port: 8008}
+    - {protocol: TCP, port: 8009}
+    - {protocol: UDP, port: 8009}
+    - {protocol: TCP, port: 8010}
+    - {protocol: UDP, port: 8010}
+
+  egress:
+  # Allow out to the internet (not to rest of cluster)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+          - 10.0.0.0/8
+          - 192.168.0.0/16
+          - 172.16.0.0/12
+          - 169.254.169.254/32  # Hosting Provider Metadata IP
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}-admin
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      network-policy: admin
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: proxy
+    ports:
+    - {protocol: TCP, port: 5000}
+    - {protocol: UDP, port: 5000}
+    # Optional proxy ports
+    - {protocol: TCP, port: 8000}
+    - {protocol: UDP, port: 8000}
+    - {protocol: TCP, port: 8001}
+    - {protocol: UDP, port: 8001}
+    - {protocol: TCP, port: 8002}
+    - {protocol: UDP, port: 8002}
+    - {protocol: TCP, port: 8003}
+    - {protocol: UDP, port: 8003}
+    - {protocol: TCP, port: 8004}
+    - {protocol: UDP, port: 8004}
+    - {protocol: TCP, port: 8005}
+    - {protocol: UDP, port: 8005}
+    - {protocol: TCP, port: 8006}
+    - {protocol: UDP, port: 8006}
+    - {protocol: TCP, port: 8007}
+    - {protocol: UDP, port: 8007}
+    - {protocol: TCP, port: 8008}
+    - {protocol: UDP, port: 8008}
+    - {protocol: TCP, port: 8009}
+    - {protocol: UDP, port: 8009}
+    - {protocol: TCP, port: 8010}
+    - {protocol: UDP, port: 8010}
+
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 192.168.0.0/16
+        - 172.16.0.0/12
+        - 169.254.169.254/32  # Hosting Provider Metadata IP
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: pipeline-api
+    ports:
+    - port: 5000
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: api
+    ports:
+    - port: 5000
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}-shell-autograde
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      network-policy: shell-autograde-student
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # IDE Proxy -> IDE
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: proxy
+    ports:
+    - { protocol: TCP, port: 5000 }
+    - { protocol: UDP, port: 5000 }
+
+  egress:
+  # Kubernetes System DNS
+  - to:
+    - namespaceSelector: { }
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - { protocol: TCP, port: 53 }
+    - { protocol: UDP, port: 53 }
+  # Default allow public addresses
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 192.168.0.0/16
+        - 172.16.0.0/12
+        - 169.254.169.254/32  # Hosting Provider Metadata IP
+  # Allow to pipeline-api
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: pipeline-api
+    ports:
+    - {protocol: TCP, port: 5000}
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}-submission-pipeline
+  labels:
+    {{- include "chart.selectorLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      network-policy: submission-pipeline
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  # Kubernetes System DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - {protocol: TCP, port: 53}
+    - {protocol: UDP, port: 53}
+  # Pipeline API
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "chart.selectorLabels" . | nindent 10 }}
+          component: pipeline-api
+    ports:
+    - {protocol: TCP, port: 5000}
+  # GitHub IP Addresses
+  # curl https://api.github.com/meta | jq '[ .git, .web | .[] | {ipBlock: {cidr: .}}]' | yq -y
+  - to:
+      - ipBlock:
+          cidr: 192.30.252.0/22
+      - ipBlock:
+          cidr: 185.199.108.0/22
+      - ipBlock:
+          cidr: 140.82.112.0/20
+      - ipBlock:
+          cidr: 143.55.64.0/20
+      - ipBlock:
+          cidr: 2a0a:a440::/29
+      - ipBlock:
+          cidr: 2606:50c0::/32
+      - ipBlock:
+          cidr: 20.201.28.151/32
+      - ipBlock:
+          cidr: 20.205.243.166/32
+      - ipBlock:
+          cidr: 102.133.202.242/32
+      - ipBlock:
+          cidr: 20.248.137.48/32
+      - ipBlock:
+          cidr: 20.207.73.82/32
+      - ipBlock:
+          cidr: 20.27.177.113/32
+      - ipBlock:
+          cidr: 20.200.245.247/32
+      - ipBlock:
+          cidr: 20.233.54.53/32
+      - ipBlock:
+          cidr: 20.201.28.152/32
+      - ipBlock:
+          cidr: 20.205.243.160/32
+      - ipBlock:
+          cidr: 102.133.202.246/32
+      - ipBlock:
+          cidr: 20.248.137.50/32
+      - ipBlock:
+          cidr: 20.207.73.83/32
+      - ipBlock:
+          cidr: 20.27.177.118/32
+      - ipBlock:
+          cidr: 20.200.245.248/32
+      - ipBlock:
+          cidr: 20.233.54.52/32
+      - ipBlock:
+          cidr: 192.30.252.0/22
+      - ipBlock:
+          cidr: 185.199.108.0/22
+      - ipBlock:
+          cidr: 140.82.112.0/20
+      - ipBlock:
+          cidr: 143.55.64.0/20
+      - ipBlock:
+          cidr: 2a0a:a440::/29
+      - ipBlock:
+          cidr: 2606:50c0::/32
+      - ipBlock:
+          cidr: 20.201.28.151/32
+      - ipBlock:
+          cidr: 20.205.243.166/32
+      - ipBlock:
+          cidr: 102.133.202.242/32
+      - ipBlock:
+          cidr: 20.248.137.48/32
+      - ipBlock:
+          cidr: 20.207.73.82/32
+      - ipBlock:
+          cidr: 20.27.177.113/32
+      - ipBlock:
+          cidr: 20.200.245.247/32
+      - ipBlock:
+          cidr: 20.233.54.53/32
+    ports:
+      - port: 443 # HTTPS
+      - port: 22  # SSH
+---
+
+{{- end }}

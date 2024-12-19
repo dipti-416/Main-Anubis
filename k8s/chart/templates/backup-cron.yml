@@ -1,0 +1,59 @@
+{{- if .Values.backup.enable }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "chart.fullname" . }}-backup
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Replace
+  suspend: {{ .Values.backup.suspend }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "chart.selectorLabels" . | nindent 8 }}
+        component: backup
+    spec:
+      template:
+        spec:
+          {{- if and .Values.nodeSelector (not .Values.debug) }}
+          nodeSelector:
+            {{ .Values.nodeSelector | toYaml }}
+          {{- end }}
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 1000
+          containers:
+          - name: backup
+            image: "{{ .Values.api.image }}:{{ .Values.tag }}"
+            imagePullPolicy: {{ .Values.imagePullPolicy }}
+            command:
+            - ./anubis/jobs/backup.sh
+            env:
+            {{- include "api.env" . | nindent 12 }}
+            - name: "SFTP_HOST"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backup.secretName }}
+                  key: sftp-host
+            - name: "SFTP_USER"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backup.secretName }}
+                  key: sftp-user
+            - name: "SFTP_LOCATION"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backup.secretName }}
+                  key: sftp-location
+            volumeMounts:
+            - name: {{ .Values.backup.secretName }}
+              mountPath: "/home/anubis/.ssh"
+          volumes:
+          - name: {{ include "chart.fullname" . }}-backup-creds
+            secret:
+              secretName: {{ .Values.backup.secretName }}
+              defaultMode: 0644
+{{- end }}

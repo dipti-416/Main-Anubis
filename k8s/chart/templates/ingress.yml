@@ -1,0 +1,300 @@
+# Strip prefix /api
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/api"
+---
+
+# Strip prefix /ide
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-ide
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/ide"
+---
+
+# Strip prefix /docs
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-docs
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/docs"
+---
+
+# Strip prefix /autograde
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-autograde
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/autograde"
+---
+
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.api.public
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.debug }}
+  entryPoints:
+  - websecure
+  {{- else }}
+  entryPoints:
+  - web
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.domain }}`) && PathPrefix(`/api/`)
+    middlewares:
+    - name: strip-api
+    services:
+    - name: {{ include "chart.fullname" . }}-api
+      port: 5000
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+# Public Ingress Route /*
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.web
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: web
+spec:
+  {{- if .Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.domain }}`)
+    services:
+    - name: {{ include "chart.fullname" . }}-web
+      port: 3000
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+{{- range untilStep (.Values.theia.proxy.portMin | int) (add .Values.theia.proxy.portMax 1 | int) 1 }}
+# Public Ingress Route ide8000.anubis-lms.io/
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.theia-proxy-{{ . }}.public
+  labels:
+    {{- include "chart.labels" $ | nindent 4 }}
+    component: proxy
+spec:
+  {{- if $.Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ $.Values.domain }}`) && PathPrefix(`/ide/`)
+    middlewares:
+    - name: strip-ide
+    services:
+    - name: {{ include "chart.fullname" $ }}-theia-proxy
+      port: 5000
+  - kind: Rule
+    match: Host(`ide{{ . }}.{{ $.Values.domain }}`)
+    services:
+    - name: {{ include "chart.fullname" $ }}-theia-proxy
+      port: 5000
+  {{- if not $.Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+{{- end }}
+
+# Public Ingress Route /*
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.marketing-web
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: marketing-web
+spec:
+  {{- if .Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.marketing.domain }}`)
+    services:
+    - name: {{ include "chart.fullname" . }}-marketing-web
+      port: {{ .Values.marketing.port }}
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+# pincer Ingress Route /*
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.pincer-web
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: pincer-web
+spec:
+  {{- if .Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.pincer.domain }}`)
+    services:
+    - name: {{ include "chart.fullname" . }}-pincer-web
+      port: {{ .Values.pincer.port }}
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+# Public Ingress Route /*
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.cli-docs
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: cli-docs
+spec:
+  {{- if .Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.domain }}`) && PathPrefix(`/docs`)
+    middlewares:
+    - name: strip-docs
+    services:
+    - name: {{ include "chart.fullname" . }}-cli-docs
+      port: 8080
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+# Public Ingress Route /*
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.theia-autograde-docs
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: theia-autograde-docs
+spec:
+  {{- if .Values.debug }}
+  entryPoints:
+    - web
+  {{- else }}
+  entryPoints:
+    - websecure
+  {{- end }}
+  routes:
+  - kind: Rule
+    match: Host(`{{ .Values.domain }}`) && PathPrefix(`/autograde`)
+    middlewares:
+    - name: strip-autograde
+    services:
+    - name: {{ include "chart.fullname" . }}-theia-autograde-docs
+      port: 8080
+  {{- if not .Values.debug }}
+  tls:
+    certResolver: le
+  {{- end }}
+---
+
+# For the anubis-lms.io redirect when we deploy that
+{{- if not .Values.debug }}
+# Redirect with domain replacement
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-new
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: proxy
+spec:
+  redirectRegex:
+    regex: ^https://anubis.osiris.services/(.*)
+    replacement: https://anubis-lms.io/${1}
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingress.route.anubis.redirect.public
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: proxy
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - kind: Rule
+    match: Host(`anubis.osiris.services`)
+    middlewares:
+    - name: redirect-to-new
+      namespace: {{ .Release.Namespace }}
+    services:
+    - name: {{ include "chart.fullname" . }}-web
+      port: 3000
+  tls:
+    certResolver: le
+{{- end }}

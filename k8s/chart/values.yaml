@@ -1,0 +1,207 @@
+# Global Settings
+nameOverride: "anubis"
+fullnameOverride: ""
+debug: false
+rollingUpdates: true
+healthChecks: true
+domain: "anubis-lms.io"
+#domain: "anubis.osiris.services"
+vpnOnly: false
+imagePullPolicy: "Always"
+imagePullSecret: "anubis"
+tag: "latest"
+revisionHistoryLimit: 3
+offSemester: false
+
+nodeSelector:
+  doks.digitalocean.com/node-pool: pool-mfdxypigt
+ideNodeSelector: doks.digitalocean.com/node-pool=pool-upp9zbisp
+
+###############################################################################
+# Deployments with Services
+
+# Main anubis api
+api:
+  replicas: 3
+  workers: 2
+  gunicorn_options: "--capture-output --enable-stdio-inheritance --preload --timeout 30"
+  image: "registry.digitalocean.com/anubis/api"
+
+# Anubis web static
+web:
+  replicas: 3
+  image: "registry.digitalocean.com/anubis/web"
+
+pipeline:
+  # API for submission pipeline reporting
+  api:
+    replicas: 3
+    workers: 1
+
+  # API for submission pipeline reporting
+  poller:
+    replicas: 2
+
+# Theia IDE proxy and poller
+theia:
+  enable: true
+
+  # theia-poller deployment
+  poller:
+    replicas: 1
+
+  # theia-proxy deployment
+  proxy:
+    replicas: 16
+    image: "registry.digitalocean.com/anubis/theia-proxy"
+    tag: "latest"
+    portMin: 8000
+    portMax: 8010
+
+  prop:
+    enable: true
+    images:
+    - name: "theia-init"
+      image: "registry.digitalocean.com/anubis/theia-init:latest"
+    - name: "theia-autosave"
+      image: "registry.digitalocean.com/anubis/theia-autosave:latest"
+    - name: "theia-autograde"
+      image: "registry.digitalocean.com/anubis/theia-autograde:latest"
+    - name: "theia-dockerd"
+      image: "registry.digitalocean.com/anubis/theia-dockerd:latest"
+    - name: "theia-dockerd-authz"
+      image: "registry.digitalocean.com/anubis/anubis-authz:latest"
+    - name: "theia-base-310"
+      image: "registry.digitalocean.com/anubis/theia-base:python-3.10"
+    - name: "theia-cpp"
+      image: "registry.digitalocean.com/anubis/theia-cpp"
+    - name: "theia-golang"
+      image: "registry.digitalocean.com/anubis/theia-golang"
+    - name: "theia-jepst"
+      image: "registry.digitalocean.com/anubis/theia-jepst"
+    - name: "webtop-jepst"
+      image: "registry.digitalocean.com/anubis/webtop-jepst"
+    - name: "webtop-osiris"
+      image: "registry.digitalocean.com/anubis/webtop-osiris"
+    - name: "theia-admin"
+      image: "registry.digitalocean.com/anubis/theia-admin"
+    - name: "webtop-base-310"
+      image: "registry.digitalocean.com/anubis/webtop-base:python-3.10"
+    - name: "theia-pincer"
+      image: "registry.digitalocean.com/anubis/theia-pincer"
+
+# Discord Bot
+discord_bot:
+  enable: true
+  replicas: 1
+
+marketing:
+  enable: true
+  domain: "about.anubis-lms.io"
+  port: 3000
+  image: "registry.digitalocean.com/anubis/marketing-site"
+  tag: "latest"
+  replicas: 2
+
+pincer:
+  enable: true
+  domain: "pincer.anubis-lms.io"
+  port: 8000
+  image: "registry.digitalocean.com/anubis/pincer"
+  tag: "latest"
+  replicas: 1
+
+cli_docs:
+  enable: true
+  image: "registry.digitalocean.com/anubis/docs"
+  tag: "latest"
+  replicas: 1
+  port: 8080
+
+autograde_docs:
+  enable: true
+  image: "registry.digitalocean.com/anubis/theia-autograde-docs"
+  replicas: 1
+  port: 8080
+
+###############################################################################
+
+
+
+###############################################################################
+# Cron Jobs
+reaper:
+  enable: true
+  suspend: false
+  schedule: "*/5 * * * *"
+
+visuals:
+  enable: true
+  suspend: false
+  schedule: "*/5 * * * *"
+
+daily_reaper:
+  enable: true
+  suspend: false
+  schedule: "0 4 * * *"  # 4AM
+
+github_reaper:
+  enable: true
+  suspend: false
+  schedule: "*/5 * * * *"
+
+autograde_reaper:
+  enable: true
+  suspend: false
+  schedule: "*/30 * * * *"
+
+ide_reaper:
+  enable: true
+  suspend: false
+  schedule: "* * * * *"
+
+backup:
+  enable: true
+  suspend: false
+  schedule: "0 */6 * * *" # 6 hours
+  volume_schedule: "0 0 * * *" # Midnight
+  # schedule: "0 0 * * 0" # Midnight sunday
+  # volume_schedule: "0 0 * * 0" # Midnight sunday
+  secretName: anubis-backup-creds
+
+email:
+  enable: true
+  suspend: false
+  schedule: "*/5 * * * *"
+  secretName: google-gmail-creds
+
+autograde_shell_reaper:
+  enable: true
+  suspend: false
+  schedule: "* * * * *"
+
+reserve:
+  enable: true
+  suspend: false
+  schedule: "*/5 * * * *"
+###############################################################################
+
+
+###############################################################################
+# RPC Pools
+rpc:
+  replicas: 4
+  queues: ["default", "theia", "regrade"]
+###############################################################################
+
+
+###############################################################################
+# Horizontal Pod Autoscaling
+hpa:
+  enable: true
+  rpc:
+  - name: rpc-default
+  - name: rpc-theia
+  - name: rpc-regrade
+###############################################################################
+

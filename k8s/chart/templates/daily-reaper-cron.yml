@@ -1,0 +1,34 @@
+
+{{- if .Values.daily_reaper.enable }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "chart.fullname" . }}-daily-reaper
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: daily-reaper
+spec:
+  schedule: {{ .Values.daily_reaper.schedule | quote }}
+  suspend: {{ .Values.daily_reaper.suspend }}
+  concurrencyPolicy: Replace
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "chart.selectorLabels" . | nindent 8 }}
+        component: daily-reaper
+    spec:
+      template:
+        spec:
+          {{- if and .Values.nodeSelector (not .Values.debug) }}
+          nodeSelector:
+            {{ .Values.nodeSelector | toYaml }}
+          {{- end }}
+          restartPolicy: Never
+          containers:
+          - name: daily-reaper
+            image: "{{ .Values.api.image }}:{{ .Values.tag }}"
+            imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+            command: ["python3", "anubis/jobs/daily_reaper.py"]
+            env:
+            {{- include "api.env" . | nindent 12 }}
+{{- end }}

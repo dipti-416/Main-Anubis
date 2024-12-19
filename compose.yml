@@ -1,0 +1,228 @@
+###############################################################
+#                                                             #
+#  This file is meant for debugging ONLY. Do not use in prod  #
+#                                                             #
+###############################################################
+
+name: anubis
+
+services:
+  traefik:
+    image: "traefik:v2.2"
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.http.address=:80"
+    ports:
+      - "${TRAEFIK_PORT:-80}:80"
+    volumes:
+      - "${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro"
+    labels:
+      - "traefik.enable=false"
+
+  api:
+    image: registry.digitalocean.com/anubis/api:${GIT_TAG:-latest}
+    build:
+      context: ./api
+      args:
+        - GIT_TAG=${GIT_TAG:-latest}
+
+    command: sh -c "while true; do python3 dev.py; sleep 1; done"
+    environment:
+      - "MINDEBUG=0"
+      - "DEBUG=1"
+      - "DB_HOST=db"
+      - "MPLCONFIGDIR=/tmp"
+      - "GITHUB_TOKEN"
+      - "SENTRY_DSN"
+    volumes:
+      - "./api:/opt/app"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.api.loadbalancer.server.port=5000"
+      - "traefik.http.middlewares.strip-api.stripprefix.prefixes=/api"
+      - "traefik.http.routers.api-public.rule=(Host(`localhost`) || Host(`ide8000.anubis-lms.io`)) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.api-public.entrypoints=http,https"
+      - "traefik.http.routers.api-public.middlewares=strip-api@docker"
+
+  pipeline-api:
+    build: ./api
+    image: registry.digitalocean.com/anubis/api:latest
+    environment:
+      - "DEBUG=1"
+      - "DB_HOST=db"
+      - "GITHUB_TOKEN"
+      - "SENTRY_DSN"
+      - "CREATE_APP_FUNCTION=create_pipeline_app"
+    volumes:
+      - "./api:/opt/app"
+    labels:
+      - "traefik.enable=false"
+
+  rpc-default:
+    build: ./api
+    command: "rq worker -u redis://:anubis@redis-master default"
+    environment:
+      - "DEBUG=1"
+      - "DB_HOST=db"
+      - "GITHUB_TOKEN"
+      - "SENTRY_DSN"
+    volumes:
+      - "./api:/opt/app"
+    labels:
+      - "traefik.false=enable"
+
+  rpc-theia:
+    build: ./api
+    command: "rq worker -u redis://:anubis@redis-master theia"
+    environment:
+      - "DEBUG=1"
+      - "DB_HOST=db"
+      - "GITHUB_TOKEN"
+      - "SENTRY_DSN"
+    volumes:
+      - "./api:/opt/app"
+    labels:
+      - "traefik.enable=false"
+
+  rpc-regrade:
+    build: ./api
+    command: "rq worker -u redis://:anubis@redis-master regrade"
+    environment:
+      - "DEBUG=1"
+      - "DB_HOST=db"
+      - "GITHUB_TOKEN"
+      - "SENTRY_DSN"
+    volumes:
+      - "./api:/opt/app"
+    labels:
+      - "traefik.enable=false"
+
+  web:
+    image: registry.digitalocean.com/anubis/web:${GIT_TAG:-latest}
+    build:
+      context: ./web
+      args:
+        GIT_TAG: "${GIT_TAG:-latest}"
+
+  web-dev:
+    image: node:18-alpine
+    user: "${ANUBIS_UID:-1000}:${ANUBIS_UID:-1000}"
+    working_dir: /opt/app
+    command: sh -c 'yarn && yarn run start'
+    environment:
+      NODE_ENV: development
+      REACT_APP_DEV: dev
+      DANGEROUSLY_DISABLE_HOST_CHECK: 'true'
+      REACT_APP_GIT_TAG: "${GIT_TAG:-latest}"
+      WDS_SOCKET_PORT: "80"
+    volumes:
+      - ./web:/opt/app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+      - "traefik.http.routers.web-public.rule=(Host(`localhost`) || Host(`ide8000.anubis-lms.io`))"
+      - "traefik.http.routers.web-public.entrypoints=http,https"
+
+  db:
+    image: mariadb:10.6.14
+    dns: [8.8.8.8]
+    command:
+      - "mysqld"
+      - "--max-allowed-packet=1073741824"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_general_ci"
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      - "MYSQL_ROOT_PASSWORD=anubis"
+      - "MYSQL_DATABASE=anubis"
+      - "MYSQL_USER=anubis"
+      - "MYSQL_PASSWORD=anubis"
+    volumes:
+      - "db_data:/var/lib/mysql"
+    labels:
+      - "traefik.enable=false"
+
+  redis-master:
+    image: redis:latest
+    command: redis-server --requirepass anubis
+    ports:
+      - "127.0.0.1:6379:6379"
+    labels:
+      - "traefik.enable=false"
+
+  theia-proxy:
+    image: registry.digitalocean.com/anubis/theia-proxy:${GIT_TAG:-latest}
+    build: ./theia/proxy
+
+  theia-init:
+    image: registry.digitalocean.com/anubis/theia-init:${GIT_TAG:-latest}
+    build: ./theia/init
+
+  theia-autosave:
+    image: registry.digitalocean.com/anubis/theia-autosave:${GIT_TAG:-latest}
+    build: theia/autosave
+
+  theia-dockerd:
+    image: registry.digitalocean.com/anubis/theia-dockerd:${GIT_TAG:-latest}
+    build: theia/dockerd
+
+  theia-autograde:
+    image: registry.digitalocean.com/anubis/theia-autograde:${GIT_TAG:-latest}
+    build: theia/autograde
+
+  theia-autograde-docs:
+    image: registry.digitalocean.com/anubis/theia-autograde-docs:${GIT_TAG:-latest}
+    build:
+      dockerfile: Dockerfile-docs
+      context: theia/autograde
+
+  theia-base-38:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.8
+
+  theia-base-39:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.9
+
+  theia-base-310:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.10
+
+  theia-base-38-bare:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.8-bare
+
+  theia-base-39-bare:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.9-bare
+
+  theia-base-310-bare:
+    image: registry.digitalocean.com/anubis/theia-base:python-3.10-bare
+
+  theia-golang:
+    image: registry.digitalocean.com/anubis/theia-golang:latest
+
+  theia-cpp:
+    image: registry.digitalocean.com/anubis/theia-cpp:latest
+
+  theia-admin:
+    image: registry.digitalocean.com/anubis/theia-admin:latest
+
+  theia-devops:
+    image: registry.digitalocean.com/anubis/theia-devops:latest
+
+  theia-flask-39:
+    image: registry.digitalocean.com/anubis/theia-flask:python-3.9
+
+  theia-flask-310:
+    image: registry.digitalocean.com/anubis/theia-flask:python-3.10
+
+  theia-mysql-39:
+    image: registry.digitalocean.com/anubis/theia-mysql:python-3.9
+
+  theia-mysql-310:
+    image: registry.digitalocean.com/anubis/theia-mysql:python-3.10
+
+  theia-jepst:
+    image: registry.digitalocean.com/anubis/theia-jepst:latest
+
+volumes:
+  db_data:

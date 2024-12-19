@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "chart.fullname" . }}-rpc
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    component: rpc
+{{- if .Values.imagePullSecret }}
+imagePullSecrets:
+- name: {{ .Values.imagePullSecret }}
+{{- end }}
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "chart.fullname" . }}-rpc
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/pipeline-create-jobs: "true"
+rules:
+- apiGroups: ["batch", "extensions"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "persistentvolumeclaims", "pods/log"]
+  verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
+{{- if .Values.debug }}
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+{{- end}}
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "chart.fullname" . }}-rpc
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "chart.fullname" . }}-rpc
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "chart.fullname" . }}-rpc
+    namespace: anubis
+---
+
+{{- range $.Values.rpc.queues }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" $ }}-rpc-{{ . }}
+  labels:
+    {{- include "chart.labels" $ | nindent 4 }}
+    component: rpc-{{ . }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" $ | nindent 6 }}
+      component: rpc-{{ . }}
+  replicas: {{- if not $.Values.offSemester }} {{ $.Values.rpc.replicas }}{{- else }} 1{{- end }}
+  revisionHistoryLimit: {{ $.Values.revisionHistoryLimit }}
+  {{- if $.Values.rollingUpdates }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "chart.selectorLabels" $ | nindent 8 }}
+        component: rpc-{{ . }}
+    spec:
+      serviceAccountName: anubis-rpc
+      containers:
+      - name: {{ include "chart.fullname" $ }}-rpc-{{ . }}
+        image: "{{ $.Values.api.image }}:{{ $.Values.tag }}"
+        imagePullPolicy: {{ $.Values.imagePullPolicy }}
+        command: ["./rq-worker.sh", {{ . | quote }}]
+        {{- if not $.Values.debug }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+        {{- end }}
+        env:
+        - name: "JOB"
+          value: "1"
+        {{- include "api.env" $ | nindent 8 }}
+---
+{{- end }}
